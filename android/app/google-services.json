@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1064694430703",
+    "project_id": "final-enroll-app",
+    "storage_bucket": "final-enroll-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1064694430703:android:04709cbecd672bcf6d141a",
+        "android_client_info": {
+          "package_name": "com.example.enroll_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuNfR6DRiQBi8oexOi1RRC7f8zTEz2AUw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
