@@ -12,6 +12,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   String email = '';
   String password = '';
+  String name = '';
   String error = '';
 
   @override
@@ -42,6 +43,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 SizedBox(height: 50),
+                TextFormField(
+                  validator: (val) => val!.isEmpty ? 'Enter your name' : null,
+                  onChanged: (val) => setState(() => name = val),
+                  decoration: InputDecoration(
+                    labelText: 'Name',
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                SizedBox(height: 20),
                 TextFormField(
                   validator: (val) => val!.isEmpty ? 'Enter an email' : null,
                   onChanged: (val) => setState(() => email = val),
@@ -84,7 +99,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     onPressed: () async {
                       if(_formKey.currentState!.validate()){
                         try {
-                          var result = await _auth.registerWithEmailAndPassword(email, password);
+                          var result = await _auth.registerWithEmailAndPassword(email, password, name);
                           if(result != null) {
                             Navigator.pop(context);
                           }

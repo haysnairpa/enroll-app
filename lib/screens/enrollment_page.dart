@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/subject.dart';
-import '../models/enrollment.dart';
+import '../services/subject_service.dart';
 
 class EnrollmentPage extends StatefulWidget {
   @override
@@ -11,9 +11,12 @@ class EnrollmentPage extends StatefulWidget {
 
 class _EnrollmentPageState extends State<EnrollmentPage> {
   final Set<Subject> selectedSubjects = {};
+  final SubjectService _subjectService = SubjectService();
+  List<Subject> availableSubjects = [];
   int totalCredits = 0;
   static const int maxCredits = 24;
   bool isEnrolled = false;
+  bool isLoading = true;
 
   @override
   void initState() {
@@ -24,29 +27,40 @@ class _EnrollmentPageState extends State<EnrollmentPage> {
   Future<void> checkEnrollmentStatus() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final enrollmentDoc = await FirebaseFirestore.instance
-          .collection('enrollments')
+      final studentDoc = await FirebaseFirestore.instance
+          .collection('students')
           .doc(user.uid)
           .get();
 
-      if (enrollmentDoc.exists) {
+      if (studentDoc.exists) {
+        final enrolledSubjects = studentDoc.data()?['enrolledSubjects'] as List<dynamic>?;
         setState(() {
-          isEnrolled = true;
+          isEnrolled = enrolledSubjects != null && enrolledSubjects.isNotEmpty;
         });
-        loadEnrollmentData(enrollmentDoc.data()!);
+        if (isEnrolled) {
+          loadEnrollmentData(studentDoc.data()!);
+        }
       }
     }
+    setState(() {
+      isLoading = false;
+    });
   }
 
   void loadEnrollmentData(Map<String, dynamic> data) {
-    final enrollment = Enrollment.fromMap(data);
     setState(() {
       selectedSubjects.clear();
-      for (var subjectId in enrollment.subjectIds) {
-        final subject = availableSubjects.firstWhere((s) => s.id == subjectId);
-        selectedSubjects.add(subject);
+      final List<dynamic> enrolledSubjects = data['enrolledSubjects'] ?? [];
+      for (var subjectData in enrolledSubjects) {
+        final subject = Subject(
+          name: subjectData['name'] ?? '',
+          credits: subjectData['credits'] ?? 0,
+        );
+        if (subject.name.isNotEmpty) {
+          selectedSubjects.add(subject);
+        }
       }
-      totalCredits = enrollment.totalCredits;
+      totalCredits = data['totalCredits'] ?? 0;
     });
   }
 
@@ -70,6 +84,7 @@ class _EnrollmentPageState extends State<EnrollmentPage> {
               ),
               backgroundColor: Colors.red.shade400,
               behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.all(16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -82,37 +97,39 @@ class _EnrollmentPageState extends State<EnrollmentPage> {
 
   Future<void> saveEnrollment() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('students')
+            .doc(user.uid)
+            .update({
+          'enrolledSubjects': selectedSubjects.map((s) => {
+            'name': s.name,
+            'credits': s.credits,
+          }).toList(),
+          'totalCredits': totalCredits,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
 
-    final enrollment = Enrollment(
-      userId: user.uid,
-      subjectIds: selectedSubjects.map((s) => s.id).toList(),
-      enrollmentDate: DateTime.now(),
-      totalCredits: totalCredits,
-    );
+        setState(() {
+          isEnrolled = true;
+        });
 
-    await FirebaseFirestore.instance
-        .collection('enrollments')
-        .doc(user.uid)
-        .set(enrollment.toMap());
-
-    setState(() {
-      isEnrolled = true;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Enrollment successful!',
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.green.shade400,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Enrollment saved successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving enrollment: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildEnrollmentSummary() {
@@ -286,23 +303,22 @@ class _EnrollmentPageState extends State<EnrollmentPage> {
               (context, index) {
                 final subject = availableSubjects[index];
                 final isSelected = selectedSubjects.contains(subject);
-                return Container(
-                  margin: EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected 
-                          ? Colors.deepPurple.shade200
-                          : Colors.grey.shade200,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
+                
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 12),
                   child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
+                    color: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: isSelected ? Colors.deepPurple : Colors.grey.shade200,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: InkWell(
                       onTap: () => toggleSubject(subject),
+                      borderRadius: BorderRadius.circular(16),
                       child: Padding(
                         padding: EdgeInsets.all(16),
                         child: Row(
@@ -347,14 +363,10 @@ class _EnrollmentPageState extends State<EnrollmentPage> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: isSelected 
-                                      ? Colors.deepPurple
-                                      : Colors.grey.shade400,
+                                  color: isSelected ? Colors.deepPurple : Colors.grey.shade400,
                                   width: 2,
                                 ),
-                                color: isSelected 
-                                    ? Colors.deepPurple
-                                    : Colors.transparent,
+                                color: isSelected ? Colors.deepPurple : Colors.transparent,
                               ),
                               child: isSelected
                                   ? Icon(
@@ -388,7 +400,7 @@ class _EnrollmentPageState extends State<EnrollmentPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  elevation: 0,
+                  minimumSize: Size(double.infinity, 50),
                 ),
                 child: Text(
                   'Confirm Enrollment',
@@ -407,21 +419,35 @@ class _EnrollmentPageState extends State<EnrollmentPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: Text(
-          isEnrolled ? 'My Enrollment' : 'Choose Subjects',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0,
+        title: Text(isEnrolled ? 'My Enrollment' : 'Choose Subjects'),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
       ),
-      body: isEnrolled ? _buildEnrollmentSummary() : _buildSubjectSelection(),
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : StreamBuilder<List<Subject>>(
+              stream: _subjectService.getSubjects(),
+              initialData: availableSubjects,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
+                if (!snapshot.hasData) {
+                  return Center(child: CircularProgressIndicator());
+                }
+
+                // Only update availableSubjects if it's empty
+                if (availableSubjects.isEmpty) {
+                  availableSubjects = snapshot.data!;
+                }
+                
+                return isEnrolled
+                    ? _buildEnrollmentSummary()
+                    : _buildSubjectSelection();
+              },
+            ),
     );
   }
 }
